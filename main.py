@@ -400,11 +400,11 @@ def check_slots_command(update: Update, ctx: CallbackContext) -> None:
             time.sleep(PINCODE_INFO_FETCH_INTERVAL)
             temp_list.append(get_available_centers_by_pin(pincode))
         
-        if not temp_list[0]:
+        if not any(temp_list):
             update.effective_chat.send_message(F"Hey sorry 😅, seems there are no free slots available currently for \n(pincode(s): {user.pincode}, age preference: {user.age_limit})")
             return
         
-        vaccination_centers = [item for sublist in temp_list for item in sublist]
+        vaccination_centers = [item for sublist in temp_list if sublist is not None for item in sublist if item is not None]
     except CoWinTooManyRequests:
         update.effective_chat.send_message(
             F"Hey sorry 😅, I wasn't able to reach [CoWin Site](https://www.cowin.gov.in/home) at this moment. "
@@ -557,10 +557,10 @@ def background_worker(age_limit: AgeRangePref):
         for pincode in lst:
             temp_list.append(get_available_centers_by_pin(pincode))
         
-        if not temp_list[0]:
+        if not any(temp_list):
             continue
         
-        vaccination_centers = [item for sublist in temp_list for item in sublist]
+        vaccination_centers = [item for sublist in temp_list if sublist is not None for item in sublist if item is not None]
 
         if not vaccination_centers:
             continue
