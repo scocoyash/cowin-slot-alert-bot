@@ -100,8 +100,6 @@ class User(Model):
     total_alerts_sent = IntegerField(default=0)
     telegram_id = CharField(max_length=220, unique=True)
     chat_id = CharField(max_length=220)
-    # (scocoyash) changed this field to list of pincodes, appended to string
-    #pincode: str = FixedCharField(max_length=6, null=True, index=True)
     pincode: str = FixedCharField(null=True, index=True)
     age_limit: AgeRangePref = EnumField(choices=AgeRangePref, default=AgeRangePref.Unknown)
     enabled = BooleanField(default=False, index=True)
@@ -381,10 +379,8 @@ def filter_centers_by_age_limit(age_limit: AgeRangePref, centers: List[Vaccinati
 
 
 def get_message_header(user: User) -> str:
-    # (scocoyash)
     return F"Following slots are available (pincode(s): {user.pincode}, age preference: {user.age_limit})\n"
 
-# (scocoyash)
 def parse_pin_code_string(s: str) -> List[str]:
     lst = s.split(":")
     if len(lst) >= MAX_PINCODES:
@@ -397,7 +393,6 @@ def check_slots_command(update: Update, ctx: CallbackContext) -> None:
         return
     vaccination_centers: List[VaccinationCenter]
     try:
-        # (scocoyash) Do this for each pin code
         user_pincodes = parse_pin_code_string(user.pincode)
         #logger.info("user pincodes %s", str(user_pincodes))
         temp_list = []
@@ -417,7 +412,6 @@ def check_slots_command(update: Update, ctx: CallbackContext) -> None:
         return
     vaccination_centers = filter_centers_by_age_limit(user.age_limit, vaccination_centers)
     if not vaccination_centers:
-        # (scocoyash)
         update.effective_chat.send_message(
             F"Hey sorry 😅, seems there are no free slots available currently for \n(pincode(s): {user.pincode}, age preference: {user.age_limit})")
         return
@@ -472,8 +466,7 @@ def set_pincode(update: Update, ctx: CallbackContext) -> None:
         return
     user: User
     user, _ = get_or_create_user(telegram_id=update.effective_user.id, chat_id=update.effective_chat.id)
-    
-    # (scocoyash)
+
     if user.pincode is not None:
         lst = user.pincode.split(":")
         if len(lst) >= MAX_PINCODES:
@@ -558,7 +551,6 @@ def background_worker(age_limit: AgeRangePref):
     # TODO: Quick hack to load all pincodes in memory
     query = list(query)
     for distinct_user in query:
-        # (scocoyash) get all the available vaccination centers with open slots
         vaccination_centers = []
         temp_list = []
         lst = distinct_user.pincode.split(":")
@@ -569,7 +561,6 @@ def background_worker(age_limit: AgeRangePref):
             continue
         
         vaccination_centers = [item for sublist in temp_list for item in sublist]
-        #vaccination_centers = get_available_centers_by_pin(distinct_user.pincode)
 
         if not vaccination_centers:
             continue
