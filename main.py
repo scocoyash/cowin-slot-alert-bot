@@ -9,6 +9,7 @@ import threading
 import traceback
 import html
 import json
+import itertools
 
 import peewee
 import telegram.error
@@ -320,6 +321,8 @@ def get_available_centers_by_pin(pincode: str) -> List[VaccinationCenter]:
     vaccination_centers = CoWinAPIObj.calender_by_pin(pincode, CoWinAPI.today())
     if vaccination_centers:
         vaccination_centers = [vc for vc in vaccination_centers if vc.has_available_sessions()]
+    else:
+        vaccination_centers = []
     return vaccination_centers
 
 
@@ -394,17 +397,16 @@ def check_slots_command(update: Update, ctx: CallbackContext) -> None:
     vaccination_centers: List[VaccinationCenter]
     try:
         user_pincodes = parse_pin_code_string(user.pincode)
-        #logger.info("user pincodes %s", str(user_pincodes))
-        temp_list = []
+        regular_list = []
         for pincode in user_pincodes:
             time.sleep(PINCODE_INFO_FETCH_INTERVAL)
-            temp_list.append(get_available_centers_by_pin(pincode))
-        
-        if not any(temp_list):
+            regular_list.append(get_available_centers_by_pin(pincode))
+
+        if not any(regular_list):
             update.effective_chat.send_message(F"Hey sorry 😅, seems there are no free slots available currently for \n(pincode(s): {user.pincode}, age preference: {user.age_limit})")
             return
         
-        vaccination_centers = [item for sublist in temp_list if sublist is not None for item in sublist if item is not None]
+        vaccination_centers = list(itertools.chain(*regular_list))
     except CoWinTooManyRequests:
         update.effective_chat.send_message(
             F"Hey sorry 😅, I wasn't able to reach [CoWin Site](https://www.cowin.gov.in/home) at this moment. "
@@ -552,18 +554,18 @@ def background_worker(age_limit: AgeRangePref):
     query = list(query)
     for distinct_user in query:
         vaccination_centers = []
-        temp_list = []
+        regular_list = []
         lst = distinct_user.pincode.split(":")
         for pincode in lst:
-            temp_list.append(get_available_centers_by_pin(pincode))
+            regular_list.append(get_available_centers_by_pin(pincode))
         
-        if not any(temp_list):
+        if not any(regular_list):
             continue
         
-        vaccination_centers = [item for sublist in temp_list if sublist is not None for item in sublist if item is not None]
-
+        vaccination_centers = list(itertools.chain(*regular_list))
         if not vaccination_centers:
             continue
+
         # sleep, since we have hit CoWin APIs
         time.sleep(COWIN_API_DELAY_INTERVAL)
 
