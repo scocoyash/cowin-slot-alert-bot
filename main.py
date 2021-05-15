@@ -30,17 +30,17 @@ DISABLE_TEXT_REGEX = r'\s*disable|stop|pause\s*'
 # Following says, how often we should poll CoWin APIs for age group 18-44. In seconds
 MIN_18_WORKER_INTERVAL = 60
 # Following says, how often we should poll CoWin APIs for age group 45+. In seconds
-MIN_45_WORKER_INTERVAL = 60 * 10  # 10 minutes
+MIN_45_WORKER_INTERVAL = 60 * 5  # 5 minutes
 # Following decides, should we send a notification to user about 45+ or not.
 # If we have sent an alert in the last 30 minutes, we will not bother them
-MIN_45_NOTIFICATION_DELAY = 60 * 30
+MIN_45_NOTIFICATION_DELAY = 60 * 15
 # Whenever an exception occurs, we sleep for these many seconds hoping things will be fine
 # when we wake up. This surprisingly works most of the times.
 EXCEPTION_SLEEP_INTERVAL = 10
 # the amount of time we sleep in background workers whenever we hit their APIs
-COWIN_API_DELAY_INTERVAL = 60 * 1 # 1 minute
+COWIN_API_DELAY_INTERVAL = 60 * 0.5 # 1 minute
 # the amount of time we sleep when we get 403 from CoWin
-LIMIT_EXCEEDED_DELAY_INTERVAL = 60 * 3  # 3 minutes
+LIMIT_EXCEEDED_DELAY_INTERVAL = 60 * 1  # 1 minute
 # allowing a user to add upto 3 nearby pincodes
 MAX_PINCODES = 5
 # Time Interval between two requests sent to the cowin server
@@ -405,7 +405,7 @@ def check_slots_command(update: Update, ctx: CallbackContext) -> None:
         if not any(regular_list):
             update.effective_chat.send_message(F"Hey sorry 😅, seems there are no free slots available currently for \n(pincode(s): {user.pincode}, age preference: {user.age_limit})")
             return
-        
+
         vaccination_centers = list(itertools.chain(*regular_list))
     except CoWinTooManyRequests:
         update.effective_chat.send_message(
@@ -552,11 +552,20 @@ def background_worker(age_limit: AgeRangePref):
                 (User.age_limit == AgeRangePref.MinAgeAny) | (User.age_limit == age_limit))).distinct()
     # TODO: Quick hack to load all pincodes in memory
     query = list(query)
+    counter = 0
     for distinct_user in query:
+
+        if counter == 20:
+            # sleep, since we have hit CoWin APIs
+            # current api limit is 100 requests/300s
+            time.sleep(COWIN_API_DELAY_INTERVAL)
+            counter = 0
+
         vaccination_centers = []
         regular_list = []
         lst = distinct_user.pincode.split(":")
         for pincode in lst:
+            counter = counter + 1
             regular_list.append(get_available_centers_by_pin(pincode))
         
         if not any(regular_list):
@@ -565,9 +574,6 @@ def background_worker(age_limit: AgeRangePref):
         vaccination_centers = list(itertools.chain(*regular_list))
         if not vaccination_centers:
             continue
-
-        # sleep, since we have hit CoWin APIs
-        time.sleep(COWIN_API_DELAY_INTERVAL)
 
         # find all users for this pincode and alerts enabled
         user_query = User.select().where(
